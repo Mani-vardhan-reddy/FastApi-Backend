@@ -1,10 +1,11 @@
 from fastapi import FastAPI,Depends,HTTPException,status
 from database import Base,engine,SessionLocal
 from sqlalchemy.orm import Session
-from Schemas import User,Admin, UserResponseModel,AdminUpdateModel, AdminResponseModel, UserLoginModel,UserUpdateModel
+from Schemas import User,Admin,EmailModel, UserResponseModel,AdminUpdateModel, AdminResponseModel, UserLoginModel,UserUpdateModel
 from models import UserModel,AdminModel
 from auth import hashed_password,verify_password,create_admin_token,create_user_token,decode_user_token,decode_admin_token
 from fastapi.security import OAuth2PasswordBearer,OAuth2PasswordRequestForm
+from mail import create_message,mail
 
 
 Base.metadata.create_all(bind=engine)
@@ -21,13 +22,24 @@ def get_db():
 oauth2_user_bearer = OAuth2PasswordBearer(tokenUrl="/userlogin")
 oauth2_admin_bearer = OAuth2PasswordBearer(tokenUrl="/adminlogin")
 
+@app.post("/sent_email",tags=["Email Notification"])
+async def send_mail(emails: EmailModel):
+    emails = emails.addresses
+    html = "<h1>There is an Server Issue at this time please sign up / log in later</h1>"
+    message = create_message(recipients=emails,subject="Welcome",body=html)
+    await mail.send_message(message)
+    return {"Message":"email sent successfully"}
 
 @app.post("/usersignup",tags=["User Login/Sign Up"],response_model=UserResponseModel)
-def Create_user(user : User,db: Session = Depends(get_db)):
+async def Create_user(user : User,emails:EmailModel,db: Session = Depends(get_db)):
     new_user = UserModel(username = user.username,email = user.email,password = hashed_password(user.password),salary = user.salary)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    recipient_address = emails.addresses
+    html = f"<h1>Hey {user.username} you have signed up successfully </h1>"
+    message = create_message(recipients=recipient_address,subject="Welcome",body=html)
+    await mail.send_message(message)
     return new_user
 
 @app.post("/userlogin",tags=["User Login/Sign Up"])
@@ -56,11 +68,15 @@ def get_user(token: str = Depends(oauth2_user_bearer),db: Session = Depends(get_
         return user
       
 @app.post("/adminsignup",response_model=AdminResponseModel,tags=["Admin Login/SignUp"])
-def create_admin(ad : Admin,db: Session = Depends(get_db)):
+async def create_admin(ad : Admin,emails: EmailModel,db: Session = Depends(get_db)):
     new_admin = AdminModel(admin_name = ad.admin_name , email = ad.email, password = hashed_password(ad.password),salary = ad.salary)
     db.add(new_admin)
     db.commit()
     db.refresh(new_admin)
+    recipient_email = emails.addresses
+    html = f"<h1>Hey {ad.admin_name},You have Signed Up Successfully As Admin</h1>"
+    message = create_message(recipients=recipient_email,subject="Successfull Sign Up",body=html)
+    await mail.send_message(message)
     return new_admin
 
 @app.post("/adminlogin",tags=["Admin Login/SignUp"])

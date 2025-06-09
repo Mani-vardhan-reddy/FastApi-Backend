@@ -1,7 +1,10 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base,sessionmaker
+from config import settings
 
-engine = create_engine("postgresql+psycopg2://postgres:3377@localhost:5432/sample",echo=True)
+DATABASE_URL = settings.DATABASE_URL
+
+engine = create_engine(DATABASE_URL,echo=True)
 
 Base = declarative_base()
 

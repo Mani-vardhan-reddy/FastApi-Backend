@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel,EmailStr
+from typing import Optional,List
 
 
 class User(BaseModel):
@@ -59,3 +59,7 @@ class AdminResponseModel(BaseModel):
 class UserLoginModel(BaseModel):
     username : str
     password : str
+
+
+class EmailModel(BaseModel):
+    addresses : List[EmailStr]
