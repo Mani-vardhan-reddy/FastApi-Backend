@@ -3,6 +3,16 @@ from config import settings
 from pathlib import Path
 import ssl
 import certifi
+import aiosmtplib
+
+original_connect = aiosmtplib.SMTP.connect
+
+async def patched_connect(self, *args, **kwargs):
+    if "tls_context" not in kwargs:
+        kwargs["tls_context"] = ssl.create_default_context(cafile=certifi.where())
+    return await original_connect(self, *args, **kwargs)
+
+aiosmtplib.SMTP.connect = patched_connect
 
 ssl_context = ssl.create_default_context(cafile=certifi.where())
 

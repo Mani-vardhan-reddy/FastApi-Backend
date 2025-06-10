@@ -63,3 +63,7 @@ class UserLoginModel(BaseModel):
 
 class EmailModel(BaseModel):
     addresses : List[EmailStr]
+
+
+class SignUpEmailModel(BaseModel):
+    address : EmailStr

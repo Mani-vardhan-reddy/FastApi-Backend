@@ -2,7 +2,8 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from config import settings
-
+from itsdangerous import URLSafeTimedSerializer
+import logging
 
 
 
@@ -56,3 +57,30 @@ def create_refresh_token_for_admin(data:dict):
     to_encode.update({"exp":expire})
     token = jwt.encode(to_encode,settings.ADMIN_SECRET_KEY,algorithm=settings.ALGORITHM)
     return token 
+
+
+def create_user_safe_url_token(data:dict):
+    serializer = URLSafeTimedSerializer(settings.USER_SECRET_KEY,salt="email-configuration")
+    token = serializer.dumps(data)
+    return token
+
+def decode_user_safe_url_token(token:str):
+    serializer = URLSafeTimedSerializer(settings.USER_SECRET_KEY,salt="email-configuration")
+    try:
+        token_data = serializer.loads(token,max_age=3600)
+        return token_data
+    except Exception as e:
+        logging.error(str(e))
+
+def create_admin_safe_url_token(data:dict):
+    serializer = URLSafeTimedSerializer(settings.ADMIN_SECRET_KEY,salt="email-configuration")
+    token = serializer.dumps(data)
+    return token
+
+def decode_admin_safe_url_token(token:str):
+    serializer = URLSafeTimedSerializer(settings.ADMIN_SECRET_KEY,salt="email-configuration")
+    try:
+        token_data = serializer.loads(token,max_age=3600)
+        return token_data
+    except Exception as e:
+        logging.error(str(e))

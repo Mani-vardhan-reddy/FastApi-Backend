@@ -1,5 +1,5 @@
 from database import Base
-from sqlalchemy import Column, Integer, String, Float
+from sqlalchemy import Column, Integer, String, Float,Boolean
 
 
 class UserModel(Base):
@@ -9,6 +9,7 @@ class UserModel(Base):
     email = Column(String,nullable=False)
     password = Column(String,nullable=False)
     salary = Column(Float,nullable=True, default=20000.00)
+    is_verified = Column(Boolean, nullable=True ,default=False)
     
    
 class AdminModel(Base):
@@ -18,3 +19,4 @@ class AdminModel(Base):
     email = Column(String,nullable=False)
     password = Column(String,nullable=False)
     salary = Column(Float)
+    is_verified = Column(Boolean, nullable=True ,default=False)

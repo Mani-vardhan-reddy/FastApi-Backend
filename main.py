@@ -1,12 +1,13 @@
 from fastapi import FastAPI,Depends,HTTPException,status
 from database import Base,engine,SessionLocal
 from sqlalchemy.orm import Session
-from Schemas import User,Admin,EmailModel, UserResponseModel,AdminUpdateModel, AdminResponseModel, UserLoginModel,UserUpdateModel
+from Schemas import User,Admin,EmailModel, SignUpEmailModel, UserResponseModel,AdminUpdateModel, AdminResponseModel, UserLoginModel,UserUpdateModel
 from models import UserModel,AdminModel
 from auth import hashed_password,verify_password,create_admin_token,create_user_token,decode_user_token,decode_admin_token
 from fastapi.security import OAuth2PasswordBearer,OAuth2PasswordRequestForm
 from mail import create_message,mail
-
+from config import settings
+from auth import create_user_safe_url_token,decode_user_safe_url_token,create_admin_safe_url_token,decode_admin_safe_url_token
 
 Base.metadata.create_all(bind=engine)
 
@@ -30,17 +31,45 @@ async def send_mail(emails: EmailModel):
     await mail.send_message(message)
     return {"Message":"email sent successfully"}
 
-@app.post("/usersignup",tags=["User Login/Sign Up"],response_model=UserResponseModel)
-async def Create_user(user : User,emails:EmailModel,db: Session = Depends(get_db)):
-    new_user = UserModel(username = user.username,email = user.email,password = hashed_password(user.password),salary = user.salary)
+@app.post("/usersignup",tags=["User Login/Sign Up"])
+async def Create_user(user : User,db: Session = Depends(get_db)):
+    
+    existing_user = db.query(UserModel).filter(UserModel.email == user.email).first()
+    if existing_user:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,detail="User Already Exist")
+    else:
+        token_data = {"email":user.email,"username":user.username,"hashed_password":hashed_password(user.password)}
+        token = create_user_safe_url_token(token_data)
+        link = f"http://{settings.DOMAIN}/verify_user/{token}"
+        html_message = f"""
+           <h3>Hello {user.username}!</h3>
+           <p>Thanks for signing up. Please verify your email address by clicking the link below:</p>
+           <a href="{link}">verify link</a>
+           """
+        message = create_message(recipients=[user.email],subject="Verify Your Email",body=html_message)
+        await mail.send_message(message,template_name="verify_email.html")
+        return {"message":"Verification Link Sent Successfully!"}
+
+@app.get("/verify_user/{token}",tags=["User Login/Sign Up"])
+async def verify_email(token:str,db:Session = Depends(get_db)):
+    try:
+        token_data = decode_user_safe_url_token(token)
+        email = token_data["email"]
+        username = token_data["username"]
+        hashed_password = token_data["hashed_password"]
+    
+    except Exception:
+        raise HTTPException(status_code=400,detail="Invalid or expired token")
+    
+    existing_user = db.query(UserModel).filter(UserModel.email == email).first()
+    if existing_user:
+        raise HTTPException(status_code=400,detail="User already verified")
+    
+    new_user = UserModel(email = email,username=username,password=hashed_password,is_verified=True)
     db.add(new_user)
     db.commit()
-    db.refresh(new_user)
-    recipient_address = emails.addresses
-    html = f"<h1>Hey {user.username} you have signed up successfully </h1>"
-    message = create_message(recipients=recipient_address,subject="Welcome",body=html)
-    await mail.send_message(message)
-    return new_user
+    return {"Message":"Email verified Successful. Account Created"}
+
 
 @app.post("/userlogin",tags=["User Login/Sign Up"])
 def user_login(form_data:OAuth2PasswordRequestForm=Depends(),db: Session = Depends(get_db)):
@@ -67,17 +96,43 @@ def get_user(token: str = Depends(oauth2_user_bearer),db: Session = Depends(get_
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="User not Found")
         return user
       
-@app.post("/adminsignup",response_model=AdminResponseModel,tags=["Admin Login/SignUp"])
-async def create_admin(ad : Admin,emails: EmailModel,db: Session = Depends(get_db)):
-    new_admin = AdminModel(admin_name = ad.admin_name , email = ad.email, password = hashed_password(ad.password),salary = ad.salary)
-    db.add(new_admin)
-    db.commit()
-    db.refresh(new_admin)
-    recipient_email = emails.addresses
-    html = f"<h1>Hey {ad.admin_name},You have Signed Up Successfully As Admin</h1>"
-    message = create_message(recipients=recipient_email,subject="Successfull Sign Up",body=html)
-    await mail.send_message(message)
-    return new_admin
+@app.post("/adminsignup",tags=["Admin Login/SignUp"])
+async def create_admin(ad : Admin,db: Session = Depends(get_db)):
+    existing_admin = db.query(AdminModel).filter(AdminModel.email == ad.email).first()
+    if existing_admin:
+        raise HTTPException(status_code=409,detail="Admin already exist")
+    else:
+        token_data = {"admin_name":ad.admin_name,"email":ad.email,"password":hashed_password(ad.password)}
+        token = create_admin_safe_url_token(token_data)
+        link = f"http://{settings.DOMAIN}/verify_admin/{token}"
+        html_message = f"""
+        <h3> Hey {ad.admin_name}!</h3>
+        <p> Please follow the link to verify your details</p>
+        <a href="{link}">Verify Link</a>
+        """
+        message = create_message(recipients=[ad.email],subject="Sign up Verification",body=html_message)
+        await mail.send_message(message,template_name="verify_email.html")
+        return {"Message":"Verification link sent Successfully"}
+    
+@app.get("/verify_admin/{token}",tags=["Admin Login/SignUp"])
+async def verify_mail(token:str,db:Session=Depends(get_db)):
+    try:
+        token_data = decode_admin_safe_url_token(token)
+        admin_name = token_data["admin_name"]
+        email = token_data["email"]
+        password = token_data["password"]
+
+    except Exception:
+        raise HTTPException(status_code=400,detail="Invalid or Token Expired!")
+    
+    existing_admin = db.query(AdminModel).filter(AdminModel.email == email).first()
+    if existing_admin:
+        raise HTTPException(status_code=400,detail="Admin Already Exists!")
+    else:
+        new_admin = AdminModel(admin_name = admin_name,email=email,password = password,is_verified = True)
+        db.add(new_admin)
+        db.commit()
+        return {"Message": "Email Verified successfully, Admin Account Created"}
 
 @app.post("/adminlogin",tags=["Admin Login/SignUp"])
 def admin_login(form_data : OAuth2PasswordRequestForm = Depends(),db: Session = Depends(get_db)):
